@@ -6,6 +6,10 @@ from fastapi import FastAPI, Body,Depends
 from app.model import PostSchema, UserSchema, UserLoginSchema
 from app.auth.jwt_handler import signJWT
 from app.auth.jwt_bearer import jwtBearer
+from utils import hash_password
+from app.database import get_db 
+from fastapi import HTTPException
+
 
 
 posts = [
@@ -31,9 +35,25 @@ users = []
 app = FastAPI()
 
 def check_user(data: UserLoginSchema):
+    # Convert UserLoginSchema to a dictionary for comparison
+    user_data = data.dict()
+
     for user in users:
-        if user.email == data.email and user.password == data.password:
+        # Convert user to a dictionary for comparison
+        user_dict = user.dict()
+
+        print(f"Comparing user data: {user_data}")
+        print(f"with existing user: {user_dict}")
+
+        # Create an instance of UserLoginSchema for comparison
+        user_login_instance = UserLoginSchema(**user_data)
+
+        # Compare user data
+        if user_dict == user_login_instance.dict():
+            print("Login successful")
             return True
+
+    print("Login failed")
     return False
 
 # Get Posts
@@ -64,16 +84,45 @@ def add_post(post: PostSchema):
         "data": "post added."
     }
     
+# @app.post("/user/signup", tags=["user"])
+# def create_user(user: UserSchema = Body(...)):
+#     users.append(user) # replace with db call, making sure to hash the password first
+#     return signJWT(user.email)
+
 @app.post("/user/signup", tags=["user"])
-def create_user(user: UserSchema = Body(...)):
-    users.append(user) # replace with db call, making sure to hash the password first
-    return signJWT(user.email)
+def create_user(user: UserSchema = Body(...), db=Depends(get_db)):
+    # Convert UserSchema to dictionary
+    user_dict = user.dict()
+
+    # Hash the password before storing it
+    user_dict["password"] = hash_password(user_dict["password"])
+
+    # Insert the user into MongoDB
+    db.users.insert_one(user_dict)
+
+    return signJWT(user_dict["email"])
+
 
 
 @app.post("/user/login", tags=["user"])
 def user_login(user: UserLoginSchema = Body(...)):
+    print(f"Attempting login with user: {user}")
     if check_user(user):
         return signJWT(user.email)
-    return {
-        "error": "Wrong login details!"
-    }
+    print("Login failed")
+    raise HTTPException(status_code=401, detail="Wrong login details!")
+
+
+
+
+
+if __name__ == "__main__":
+    # This block ensures that the MongoDB client is properly closed when the FastAPI app shuts down
+    import atexit
+
+    @atexit.register
+    def shutdown():
+        from app.database import client
+        client.close()
+
+    uvicorn.run(app, host="127.0.0.1", port=8000)

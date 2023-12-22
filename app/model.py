@@ -16,14 +16,12 @@ class PostSchema(BaseModel):
 
 
 class UserSchema(BaseModel):
-    fullname: str = Field(...)
     email: EmailStr = Field(...)
     password: str = Field(...)
 
     class Config:
         schema_extra = {
             "example": {
-                "fullname": "Joe Doe",
                 "email": "joe@xyz.com",
                 "password": "any"
             }

@@ -4,10 +4,13 @@ import time
 from typing import Dict
 import jwt
 from decouple import config
+from fastapi import Depends
+from typing import Dict
 
 
 JWT_SECRET = config("secret")
 JWT_ALGORITHM = config("algorithm")
+
 
 #function that will return the token
 
