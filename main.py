@@ -6,9 +6,25 @@ from fastapi import FastAPI, Body,Depends
 from app.model import PostSchema, UserSchema, UserLoginSchema
 from app.auth.jwt_handler import signJWT
 from app.auth.jwt_bearer import jwtBearer
-from utils import hash_password
+from utils import verify_password
 from app.database import get_db 
 from fastapi import HTTPException
+
+from fastapi.middleware.cors import CORSMiddleware
+
+
+
+app = FastAPI()
+
+#CORS MIDDLEWARE
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins during development
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
 
 
 
@@ -32,7 +48,7 @@ posts = [
 
 users = []
 
-app = FastAPI()
+
 
 def check_user(data: UserLoginSchema):
     # Convert UserLoginSchema to a dictionary for comparison
@@ -89,6 +105,30 @@ def add_post(post: PostSchema):
 #     users.append(user) # replace with db call, making sure to hash the password first
 #     return signJWT(user.email)
 
+# @app.post("/user/signup", tags=["user"])
+# def create_user(user: UserSchema = Body(...), db=Depends(get_db)):
+#     # Convert UserSchema to dictionary
+#     user_dict = user.dict()
+
+#     # Hash the password before storing it
+#     user_dict["password"] = hash_password(user_dict["password"])
+
+#     # Insert the user into MongoDB
+#     db.users.insert_one(user_dict)
+
+#     return signJWT(user_dict["email"])
+
+
+
+# @app.post("/user/login", tags=["user"])
+# def user_login(user: UserLoginSchema = Body(...)):
+#     print(f"Attempting login with user: {user}")
+#     if check_user(user):
+#         return signJWT(user.email)
+#     print("Login failed")
+#     raise HTTPException(status_code=401, detail="Wrong login details!")
+
+
 @app.post("/user/signup", tags=["user"])
 def create_user(user: UserSchema = Body(...), db=Depends(get_db)):
     # Convert UserSchema to dictionary
@@ -100,20 +140,32 @@ def create_user(user: UserSchema = Body(...), db=Depends(get_db)):
     # Insert the user into MongoDB
     db.users.insert_one(user_dict)
 
-    return signJWT(user_dict["email"])
-
-
+    # You can return a success message or any other specific status code here
+    return {"message": "User created successfully"}
 
 @app.post("/user/login", tags=["user"])
-def user_login(user: UserLoginSchema = Body(...)):
-    print(f"Attempting login with user: {user}")
-    if check_user(user):
+def user_login(user: UserLoginSchema = Body(...), db=Depends(get_db)):
+    # Check if the user exists and the password is correct
+    if check_user(user, db):
+        # If successful, return the token
         return signJWT(user.email)
-    print("Login failed")
-    raise HTTPException(status_code=401, detail="Wrong login details!")
+    else:
+        # If login fails, return a 401 Unauthorized status code
+        raise HTTPException(status_code=401, detail="Wrong login details!")
 
+def check_user(data: UserLoginSchema, db):
+    # Convert UserLoginSchema to a dictionary for comparison
+    user_data = data.dict()
 
+    # Retrieve the user from the database based on the email
+    user_from_db = db.users.find_one({"email": user_data["email"]})
 
+    if user_from_db:
+        # Check if the hashed password in the database matches the input
+        if verify_password(user_data["password"], user_from_db["password"]):
+            return True
+
+    return False
 
 
 if __name__ == "__main__":
@@ -123,6 +175,7 @@ if __name__ == "__main__":
     @atexit.register
     def shutdown():
         from app.database import client
-        client.close()
+        if client and client.server_info():
+            client.close()
 
     uvicorn.run(app, host="127.0.0.1", port=8000)
