@@ -38,3 +38,16 @@ class UserLoginSchema(BaseModel):
                 "password": "any"
             }
         } 
+
+
+class ExpenseSchema(BaseModel):
+    name: str
+    amount: float
+
+class ExpenseDB(ExpenseSchema):
+    id: int
+
+class ExpenseCreate(ExpenseSchema):
+    pass
+
+
